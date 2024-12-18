@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Variables
+ACR_NAME="<YOUR_ACR_NAME>"       # Replace with your Azure Container Registry name
+RESOURCE_GROUP="<YOUR_RG_NAME>"  # Replace with your resource group name
+REPOSITORIES=$(az acr repository list --name $ACR_NAME --output tsv) # Fetch all repositories
+
+# Check if Azure CLI is installed
+if ! [ -x "$(command -v az)" ]; then
+    echo "Error: Azure CLI is not installed. Exiting."
+    exit 1
+fi
+
+# Log in to Azure if not already logged in
+if ! az account show > /dev/null 2>&1; then
+    echo "Azure login required. Logging in..."
+    az login
+fi
+
+# Process each repository in ACR
+for REPO in $REPOSITORIES; do
+    echo "Processing repository: $REPO"
+
+    # Fetch all tags sorted by creation date (descending)
+    TAGS=$(az acr repository show-tags --name $ACR_NAME --repository $REPO --orderby time_desc --output tsv)
+
+    # Initialize counter
+    COUNT=0
+
+    # Iterate over tags
+    for TAG in $TAGS; do
+        COUNT=$((COUNT+1))
+
+        # Delete the tag if more than the latest 5
+        if [ $COUNT -gt 5 ]; then
+            echo "Deleting old image: $REPO:$TAG"
+            az acr repository delete --name $ACR_NAME --repository $REPO --tag $TAG --yes
+        fi
+    done
+
+    echo "Completed cleanup for repository: $REPO"
+done
+
+echo "ACR image cleanup completed successfully."
